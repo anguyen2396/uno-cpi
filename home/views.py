@@ -1821,7 +1821,27 @@ def invitecommunityPartnerUser(request):
             return render(request, 'home/communityuser_register_done.html', )
     return render(request, 'home/registration/inviteCommunityPartner.html' , {'form':form ,
                                                                               'community_partner_user_form':community_partner_user_form})
+def recentchanges(request):
+    #project app
+    recent_project = Project.history.all().order_by('-history_date')[:100]
+    recent_proj_mission = ProjectMission.history.all().order_by('-history_date')[:100]
+    recent_proj_campus = ProjectCampusPartner.history.all().order_by('-history_date')[:100]
+    recent_proj_comm = ProjectCommunityPartner.history.all().order_by('-history_date')[:100]
+    #partner app
+    recent_campus = CampusPartner.history.all().order_by('-history_date')[:100]
+    recent_comm = CommunityPartner.history.all().order_by('-history_date')[:100]
+    recent_comm_mission = CommunityPartnerMission.history.all().order_by('-history_date')[:100]
+    #contacts
+    recent_contact = Contact.history.all().order_by('-history_date')[:50]
 
+    return render(request, 'home/recent_changes.html', {'recent_project': recent_project,
+                                                        'recent_proj_mission': recent_proj_mission,
+                                                        'recent_proj_campus': recent_proj_campus,
+                                                        'recent_proj_comm': recent_proj_comm,
+                                                        'recent_campus': recent_campus,
+                                                        'recent_comm': recent_comm,
+                                                        'recent_comm_mission': recent_comm_mission,
+                                                        'recent_contact': recent_contact})
 def registerCommPartner(request, uidb64, token):
     try:
         uid = force_str(url_has_allowed_host_and_scheme(uidb64))
