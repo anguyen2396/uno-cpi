@@ -1,21 +1,83 @@
-# This config is equivalent to both the '.circleci/extended/orb-free.yml' and the base '.circleci/config.yml'
 version: 2.1
 
-# Orbs are reusable packages of CircleCI configuration that you may share across projects, enabling you to create encapsulated, parameterized commands, jobs, and executors that can be used across multiple projects.
-# See: https://circleci.com/docs/2.0/orb-intro/
 orbs:
-  node: circleci/node@4.7
+  python: circleci/python@1.2.1
 
-# Invoke jobs via workflows
-# See: https://circleci.com/docs/2.0/configuration-reference/#workflows
+
+jobs:
+  build:
+    docker:
+      - image: circleci/python:3.8
+      - image: postgres:14.1
+        environment:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: $POSTGRES_PASSWORD
+          POSTGRES_DB: cpi_local  
+    steps:
+      - checkout
+      - run: 
+          name: Install AWS CLI
+          command: |
+            sudo mkdir -p /PostgresDump
+            sudo chmod 777 /PostgresDump
+            sudo apt-get update
+            sudo apt-get install -y awscli
+            aws configure set aws_access_key_id ${AWS_ACCESS_KEY_ID}
+            aws configure set aws_secret_access_key ${AWS_SECRET_ACCESS_KEY}
+            aws configure set default.region us-east-2
+            aws s3 cp s3://uno-isqa-8950-cpi/PostgresDump/db_cpi_local.sql /PostgresDump
+      - run:
+          name: Install system dependencies
+          command: |
+            sudo apt-get update
+            sudo apt-get install -y postgresql-client libxmlsec1-dev libxml2-dev libxslt1-dev xmlsec1
+          environment:
+            LC_ALL: C.UTF-8
+            LANG: C.UTF-8
+      - run:
+          name: Restore database from dump file
+          command: |
+            psql -U 'postgres' -d 'cpi_local' -h localhost < /PostgresDump/db_cpi_local.sql   
+          environment:
+            LC_ALL: C.UTF-8
+            LANG: C.UTF-8
+      - run:
+          name: Install Python dependencies
+          command: |
+            python -m venv venv
+            source venv/bin/activate
+            pip install -r requirements.txt
+            pip install --upgrade pip
+            pip install Django
+          environment:
+            LC_ALL: C.UTF-8
+            LANG: C.UTF-8
+      
+      - run:
+          name: Migrate database
+          command: |
+            source venv/bin/activate
+            export DATABASE_URL=postgresql://'postgres':'$POSTGRES_PASSWORD'@localhost/'cpi_local'
+            python manage.py makemigrations
+            python manage.py migrate --noinput
+            python manage.py createsuperuser --email=myuser@gmail.com --noinput      
+      - run:
+          name: Collect Static Files
+          command: |
+            source venv/bin/activate
+            export GOOGLE_MAPS_API_KEY=$GOOGLE_MAPS_API_KEY
+            python manage.py collectstatic --noinput
+      - run:
+          name: Run Server
+          command: |
+            source venv/bin/activate
+            nohup python manage.py runserver > server.log 2>&1 &
+            sleep 30               
+      - run:   
+          name: Test Server
+          command: |
+            curl -k -v http://localhost:8000/
 workflows:
-  sample: # This is the name of the workflow, feel free to change it to better match your workflow.
-    # Inside the workflow, you define the jobs you want to run.
+  build:
     jobs:
-      - node/test:
-          # This is the node version to use for the `cimg/node` tag
-          # Relevant tags can be found on the CircleCI Developer Hub
-          # https://circleci.com/developer/images/image/cimg/node
-          version: '16.10'
-          # If you are using yarn, change the line below from "npm" to "yarn"
-          pkg-manager: npm
+      - build
